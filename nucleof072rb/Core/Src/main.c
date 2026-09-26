@@ -36,6 +36,12 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define ADC_MAX_VALUE     1023U       // largest 10-bit value (2^10 - 1)
+#define ADC_FRAME_BYTES   3U          // bytes per ADC conversion
+#define PWM_MIN_COUNTS    3200U       // 1 ms on-time (5% of 64000)
+#define PWM_MAX_COUNTS    6400U       // 2 ms on-time (10% of 64000)
+#define ADC_CS_PORT       GPIOB
+#define ADC_CS_PIN        GPIO_PIN_8
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -46,6 +52,9 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
+// start bit, single-ended CH0, filler byte
+uint8_t adc_tx_buffer[ADC_FRAME_BYTES] = {0x01U, 0x80U, 0x00U};
+uint8_t adc_rx_buffer[ADC_FRAME_BYTES] = {0U};
 
 /* USER CODE END PV */
 
@@ -92,7 +101,8 @@ int main(void)
   MX_SPI1_Init();
   MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
-
+  HAL_GPIO_WritePin(ADC_CS_PORT, ADC_CS_PIN, GPIO_PIN_SET); // CS idle high
+  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);                 // 50 Hz PWM, PA8
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -102,6 +112,24 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    // 1. Read the potentiometer through the ADC
+    HAL_GPIO_WritePin(ADC_CS_PORT, ADC_CS_PIN, GPIO_PIN_RESET); // CS low
+    HAL_SPI_TransmitReceive(&hspi1, adc_tx_buffer, adc_rx_buffer,
+                            ADC_FRAME_BYTES, HAL_MAX_DELAY);
+    HAL_GPIO_WritePin(ADC_CS_PORT, ADC_CS_PIN, GPIO_PIN_SET);   // CS high
+
+    // 2. Extract the 10-bit result (0 to 1023)
+    uint16_t adc_value = ((adc_rx_buffer[1] & 0x03U) << 8) | adc_rx_buffer[2];
+
+    // 3. Scale 0 to 1023 into 3200 to 6400 timer counts (1 ms to 2 ms)
+    uint32_t pwm_counts = PWM_MIN_COUNTS
+            + ((uint32_t)adc_value * (PWM_MAX_COUNTS - PWM_MIN_COUNTS))
+            / ADC_MAX_VALUE;
+
+    // 4. Update the PWM on-time
+    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, pwm_counts);
+
+    HAL_Delay(10); // required by the guide: don't overload the ADC
   }
   /* USER CODE END 3 */
 }
