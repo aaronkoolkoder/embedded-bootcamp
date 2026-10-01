@@ -106,13 +106,15 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_RESET);
-    HAL_SPI_TransmitReceive(&hspi1, transfer_data, receive_data, 3, 100);
+    HAL_StatusTypeDef status = HAL_SPI_TransmitReceive(&hspi1, transfer_data, receive_data, 3, 100);
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_SET);
 
-    uint32_t adc_value = ((receive_data[1] & 0x03) << 8) | receive_data[2];
-    uint32_t pwm_counts = 3200 + (adc_value * 3200) / 1023;
+    if (HAL_OK == status) {
+        uint32_t adc_value = ((receive_data[1] & 0x03) << 8) | receive_data[2];
+        uint32_t pwm_counts = 3200 + (adc_value * 3200) / 1023;
 
-    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, pwm_counts);
+        __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, pwm_counts);
+    }
     HAL_Delay(10);
   }
   /* USER CODE END 3 */
